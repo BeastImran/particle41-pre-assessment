@@ -189,7 +189,7 @@ jobs:
           echo "IMAGE_TAG=${IMAGE_ROOT}:${TAG}" >> $GITHUB_OUTPUT
           echo "LATEST_TAG=${IMAGE_ROOT}:latest" >> $GITHUB_OUTPUT
           echo "ECR_IMAGE_TAG=$ECR_REGISTRY/$ECR_REPOSITORY:$TAG" >> $GITHUB_OUTPUT
-c
+
       - name: Build and push image to GHCR and Private ECR (buildx)
         uses: docker/build-push-action@v6.18.0
         with:
