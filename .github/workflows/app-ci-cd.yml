@@ -37,7 +37,7 @@ env:
 
 jobs:
   lint_test_scan:
-    name: Lint · Test · Secret-scan
+    name: Lint · Unit Test (multiple Python versions)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -97,6 +97,7 @@ jobs:
         with:
           name: test-reports-${{ matrix.python }}
           path: test-reports/
+          retention-days: 30
 
   secret_scan:
     name: Secret scan (gitleaks)
@@ -122,6 +123,7 @@ jobs:
         with:
           name: gitleaks-report
           path: gitleaks-report.json
+          retention-days: 30
 
   build_and_publish:
     name: Build & Publish Docker image (GHCR)
@@ -190,6 +192,7 @@ jobs:
           name: docker-metadata
           path: |
             /tmp  # if you create metadata files add them here
+          retention-days: 30
 
       - name: Create release note (optional)
         if: startsWith(github.ref, 'refs/tags/')
