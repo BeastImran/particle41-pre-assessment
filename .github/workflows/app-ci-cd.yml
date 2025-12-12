@@ -147,12 +147,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Normalize image name (lowercase)
+        id: normalize
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          echo "owner=${OWNER_LOWER}" >> $GITHUB_OUTPUT
+          echo "repo=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
       - name: Set image tags
         id: tags
         run: |
           SHORT_SHA=${GITHUB_SHA::7}
           DATE=$(date -u +%Y%m%d%H%M%S)
+          IMAGE_ROOT="ghcr.io/${{ steps.normalize.outputs.owner }}/${{ steps.normalize.outputs.repo }}"
+
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF##refs/tags/}"
             echo "TAG=${TAG}" >> $GITHUB_OUTPUT
