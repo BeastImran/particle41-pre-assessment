@@ -101,6 +101,8 @@ jobs:
 
       - name: Secret scanning run gitleaks
         uses: gitleaks/gitleaks-action@v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # run full repo scan (commit history, staged, etc.)
           args: --verbose --report-format json --report-path gitleaks-report-${{ matrix.python }}.json
