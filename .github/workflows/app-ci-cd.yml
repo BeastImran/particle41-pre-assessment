@@ -4,16 +4,16 @@ name: CI / CD - Lint · Test · Scan · Build & Publish
 on:
   pull_request:
     branches:
-      - '**'
+      - "**"
     paths:
-      - 'app/**'
+      - "app/**"
   push:
     branches:
       - main
     tags:
-      - 'v*'
+      - "v*"
     paths:
-      - 'app/**'
+      - "app/**"
 
 # Prevent duplicate runs for the same ref
 concurrency:
@@ -22,11 +22,11 @@ concurrency:
 
 # Minimal permissions: only what this workflow needs.
 permissions:
-  contents: read          # checkout, read code
-  packages: write         # push to GitHub Container Registry (ghcr)
-  issues: write           # optional if you want to open issues from workflow
-  id-token: write         # safe to keep for OIDC (optional)
-  pull-requests: write    # optional (if workflow adds PR comments)
+  contents: read # checkout, read code
+  packages: write # push to GitHub Container Registry (ghcr)
+  issues: write # optional if you want to open issues from workflow
+  id-token: write # safe to keep for OIDC (optional)
+  pull-requests: write # optional (if workflow adds PR comments)
   # Avoid overly broad permissions like 'admin' or 'write' for everything.
 
 env:
@@ -36,13 +36,12 @@ env:
   # NOTE: above DOCKER_IMAGE_NAME is used to form ghcr repo name; adjust if you want org/repo style
 
 jobs:
-
   lint_test_scan:
     name: Lint · Test · Secret-scan
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ['3.11', '3.12', '3.13', '3.14']   # matrix: test multiple supported python versions
+        python: ["3.11", "3.12", "3.13", "3.14"] # matrix: test multiple supported python versions
     # We need full git history for secret scanners that look through commits
     steps:
       - name: Checkout repository (full history)
@@ -54,7 +53,7 @@ jobs:
         uses: actions/setup-python@v6.1.0
         with:
           python-version: ${{ matrix.python }}
-          cache: 'pip'
+          cache: "pip"
 
       - name: Cache pip (explicit fallback)
         uses: actions/cache@v5.0.0
@@ -99,19 +98,31 @@ jobs:
           name: test-reports-${{ matrix.python }}
           path: test-reports/
 
-      - name: Secret scanning run gitleaks
+  secret_scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    # ensure it runs even for PRs (if you want), keep fetch-depth 0 so history is scanned
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v6.0.1
+        with:
+          fetch-depth: 0
+
+      # Optional: pin the action version to something your org approves
+      - name: Run gitleaks action
         uses: gitleaks/gitleaks-action@v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # run full repo scan (commit history, staged, etc.)
-          args: --verbose --report-format json --report-path gitleaks-report-${{ matrix.python }}.json
-        # gitleaks returns non-zero if leaks found; that's desirable in enterprise settings
+          # run full-repo scan; produce a unique report file
+          args: --verbose --report-format json --report-path gitleaks-report.json
+
       - name: Upload gitleaks report
         uses: actions/upload-artifact@v5.0.0
         with:
-          name: gitleaks-report-${{ matrix.python }}
-          path: gitleaks-report-${{ matrix.python }}.json
+          name: gitleaks-report
+          path: gitleaks-report.json
+
 
   build_and_publish:
     name: Build & Publish Docker image (GHCR)
