@@ -23,11 +23,11 @@ def test_index_with_x_forwarded_for():
 
 
 def test_internal_server_error(monkeypatch):
-    # Simulate an exception in the endpoint
+    # Simulate an exception in the endpoint by patching logger.info to raise
     def raise_exception(*args, **kwargs):
         raise Exception("Simulated error")
 
-    monkeypatch.setattr("app.main.datetime", None)  # Break datetime.now
+    monkeypatch.setattr("app.main.logger", "info", raise_exception)
     response = client.get("/")
     assert response.status_code == 500
-    assert response.json()["error"] == "Internal server error"
+    assert response.json()["detail"] == "Internal server error"
