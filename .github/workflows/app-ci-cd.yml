@@ -182,7 +182,7 @@ jobs:
           tags: ${{ steps.tags.outputs.IMAGE_TAG }},${{ steps.tags.outputs.LATEST_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-c
+
       - name: Upload build metadata/artifacts
         uses: actions/upload-artifact@v5.0.0
         with:
