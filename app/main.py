@@ -33,7 +33,7 @@ async def index(request: Request):
     try:
         client_ip = request.headers.get("x-forwarded-for")
         if client_ip:
-            # In case of multiple IPs, choose the first one
+            # In case of multiple IPs, take the first one
             client_ip = client_ip.split(",")[0].strip()
         else:
             client_ip = request.client.host if request.client else "unknown"
