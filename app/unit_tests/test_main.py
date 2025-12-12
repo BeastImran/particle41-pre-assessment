@@ -28,6 +28,7 @@ def test_internal_server_error(monkeypatch):
         raise Exception("Simulated error")
 
     import app.main
+
     monkeypatch.setattr(app.main.logger, "info", raise_exception)
     response = client.get("/")
     assert response.status_code == 500
