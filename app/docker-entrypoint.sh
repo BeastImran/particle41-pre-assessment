@@ -4,12 +4,20 @@ set -euo pipefail
 #############################################
 # Logging Helpers
 #############################################
+
+COLOR_GREEN="\033[1;32m"
+COLOR_YELLOW="\033[1;33m"
+COLOR_RED="\033[1;31m"
+COLOR_CYAN="\033[1;36m"
+COLOR_RESET="\033[0m"
+
 LOG_TIME() { date +"%Y-%m-%d %H:%M:%S"; }
 
-log_info()  { echo -e "\033[1;32m[$(LOG_TIME)] [INFO]\033[0m  $*"; }
-log_warn()  { echo -e "\033[1;33m[$(LOG_TIME)] [WARN]\033[0m  $*"; }
-log_error() { echo -e "\033[1;31m[$(LOG_TIME)] [ERROR]\033[0m $*" >&2; }
-log_debug() { echo -e "\033[1;36m[$(LOG_TIME)] [DEBUG]\033[0m $*"; }
+log_info()  { echo -e "${FORCE_COLOR:+$COLOR_GREEN}[$(LOG_TIME)] [INFO]${FORCE_COLOR:+$COLOR_RESET}  $*"; }
+log_warn()  { echo -e "${FORCE_COLOR:+$COLOR_YELLOW}[$(LOG_TIME)] [WARN]${FORCE_COLOR:+$COLOR_RESET}  $*"; }
+log_error() { echo -e "${FORCE_COLOR:+$COLOR_RED}[$(LOG_TIME)] [ERROR]${FORCE_COLOR:+$COLOR_RESET} $*" >&2; }
+log_debug() { echo -e "${FORCE_COLOR:+$COLOR_CYAN}[$(LOG_TIME)] [DEBUG]${FORCE_COLOR:+$COLOR_RESET} $*"; }
+
 
 #############################################
 # Environment Defaults
@@ -17,13 +25,7 @@ log_debug() { echo -e "\033[1;36m[$(LOG_TIME)] [DEBUG]\033[0m $*"; }
 GUNICORN_BIND=${GUNICORN_BIND:-unix:/run/gunicorn/gunicorn.sock}
 GUNICORN_WORKERS=${GUNICORN_WORKERS:-3}
 GUNICORN_THREADS=${GUNICORN_THREADS:-4}
-# GUNICORN_APP=${GUNICORN_APP:-app.main:app}
-# PYTHONPATH=${PYTHONPATH:-/app}
-# GUNICORN_APP=${GUNICORN_APP:-main:app}
 
-# export GUNICORN_APP
-
-# export PYTHONPATH
 
 #############################################
 # Setup Runtime Directories
@@ -37,6 +39,7 @@ chown -R "$(id -u):$(id -g)" /run/gunicorn /var/log/nginx || true
 
 log_debug "Using socket: $GUNICORN_BIND"
 log_debug "Gunicorn workers: $GUNICORN_WORKERS, threads: $GUNICORN_THREADS"
+
 
 #############################################
 # Start Gunicorn
@@ -60,6 +63,7 @@ start_gunicorn() {
     log_info "Gunicorn (UvicornWorker) started with PID: ${GUNICORN_PID}"
 }
 
+
 #############################################
 # Start Nginx
 #############################################
@@ -70,6 +74,7 @@ start_nginx() {
 
     log_info "Nginx started with PID: ${NGINX_PID}"
 }
+
 
 #############################################
 # Graceful Shutdown Handler
@@ -94,16 +99,19 @@ graceful_shutdown() {
     exit 0
 }
 
+
 #############################################
 # Signal Traps
 #############################################
 trap graceful_shutdown SIGTERM SIGINT
+
 
 #############################################
 # Start Services
 #############################################
 start_gunicorn
 start_nginx
+
 
 #############################################
 # Process Watcher (supervision)

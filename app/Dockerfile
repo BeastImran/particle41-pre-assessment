@@ -61,8 +61,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UDS_PATH=/run/uvicorn/uvicorn.sock \
     LISTEN_PORT=8080 \
     PYTHONPATH=./ \
-    GUNICORN_APP=main:app
-
+    GUNICORN_APP=main:app \
+    FORCE_COLOR=1
 
 WORKDIR /app
 
