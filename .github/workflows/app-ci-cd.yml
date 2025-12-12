@@ -198,8 +198,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.IMAGE_TAG }},${{ steps.tags.outputs.LATEST_TAG }},${{ steps.tags.outputs.ECR_IMAGE_TAG }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
 
       - name: Upload build metadata/artifacts
         uses: actions/upload-artifact@v5.0.0
