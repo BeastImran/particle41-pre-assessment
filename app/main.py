@@ -19,10 +19,14 @@ async def http_exception_handler(request, exc):
     logger.error(f"HTTP error: {exc.detail}")
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
+
 @app.exception_handler(FastAPIRequestValidationError)
 async def validation_exception_handler(request, exc):
     logger.error(f"Validation error: {exc.errors()}")
-    return JSONResponse(status_code=422, content={"error": "Validation error", "details": exc.errors()})
+    return JSONResponse(
+        status_code=422, content={"error": "Validation error", "details": exc.errors()}
+    )
+
 
 @app.get("/")
 async def index(request: Request):
@@ -35,10 +39,7 @@ async def index(request: Request):
             client_ip = request.client.host if request.client else "unknown"
         timestamp = datetime.now(timezone.utc).isoformat()
         logger.info(f"Request from IP: {client_ip} at {timestamp}")
-        return JSONResponse({
-            "timestamp": timestamp,
-            "ip": client_ip
-        })
+        return JSONResponse({"timestamp": timestamp, "ip": client_ip})
     except Exception as e:
         logger.exception("Unhandled error in index endpoint, {}".format(e))
         raise HTTPException(status_code=500, detail="Internal server error")
