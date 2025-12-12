@@ -27,7 +27,8 @@ def test_internal_server_error(monkeypatch):
     def raise_exception(*args, **kwargs):
         raise Exception("Simulated error")
 
-    monkeypatch.setattr("app.main.logger", "info", raise_exception)
+    import app.main
+    monkeypatch.setattr(app.main.logger, "info", raise_exception)
     response = client.get("/")
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
