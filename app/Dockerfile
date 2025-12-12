@@ -1,12 +1,8 @@
-# syntax=docker/dockerfile:1
-#
 # Multi-stage build:
 #  - builder: install build deps & create venv with application dependencies
-#  - final: lightweight runtime with python venv + nginx + dumb-init, non-root user
+#  - final: lightweight runtime with python venv + dumb-init, non-root user
 #
-# This mirrors the structure you provided while adding a secure nginx reverse-proxy
-# in the final image. The container runs nginx (listening on 8080) and the ASGI app
-# served by uvicorn via a unix domain socket.
+# This is a simplified version running Gunicorn with Uvicorn workers directly.
 
 ################################
 # Builder stage (build artifacts)
@@ -45,10 +41,10 @@ FROM python:3.14-slim
 LABEL org.opencontainers.image.source=$GITHUB_REPOSITORY
 LABEL org.opencontainers.image.licenses=MIT
 
-# Basic cleanup & install runtime packages: nginx and dumb-init
+
+# Basic cleanup & install runtime packages: dumb-init only
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx dumb-init bash && \
-    # remove build tools if present (they are not in this stage) and clean apt
+    apt-get install -y --no-install-recommends dumb-init bash && \
     apt-get purge -y --auto-remove && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -58,7 +54,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     GUNICORN_WORKERS=3 \
-    UDS_PATH=/run/uvicorn/uvicorn.sock \
     LISTEN_PORT=8080 \
     PYTHONPATH=./ \
     GUNICORN_APP=main:app \
@@ -72,38 +67,26 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application source (owned by root for now, will chown below)
 COPY --from=builder /app /app
 
-# Create non-root user and socket directories, set ownership
+
+# Create non-root user and runtime directories, set ownership
 RUN groupadd -r appgroup && useradd -r -g appgroup -m -d /nonexistent -s /sbin/nologin appuser \
-    && mkdir -p /run/uvicorn \
-    && chown -R appuser:appgroup /run/uvicorn /app /var/lib/nginx /var/log/nginx
+    && mkdir -p /run/gunicorn \
+    && chown -R appuser:appgroup /run/gunicorn /app
 
-# Copy nginx configs (assumes you provide nginx/nginx.conf and nginx/app.conf)
-# If you keep different paths, adjust accordingly.
-COPY nginx/nginx.conf /etc/nginx/nginx.conf
-COPY nginx/app.conf /etc/nginx/conf.d/app.conf
 
-# Copy entrypoint script that starts uvicorn & nginx and handles signals.
-# Ensure you create docker-entrypoint.sh in repo root (see earlier example).
+# Copy entrypoint script that starts Gunicorn/Uvicorn and handles signals.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Ensure runtime dirs exist and are writable by appuser (run as root)
-# RUN mkdir -p /run/gunicorn /var/run/nginx /var/log/nginx \
-#     && chown -R appuser:appgroup /run/gunicorn /var/run/nginx /var/log/nginx /app
 
-RUN mkdir -p /run/gunicorn /var/run/nginx /var/log/nginx /run/nginx \
-    && touch /run/nginx/nginx.pid \
-    && chown -R appuser:appgroup /run/nginx /var/run/nginx /var/log/nginx /run/gunicorn /app
+# Ensure runtime dirs exist and are writable by appuser (run as root)
+RUN mkdir -p /run/gunicorn \
+    && chown -R appuser:appgroup /run/gunicorn /app
 
 # Switch to non-root user
 USER appuser
 
-# Expose the port nginx will listen on
-EXPOSE 8080
-
 # Use dumb-init as PID 1 via entrypoint to handle reaping & signals
 ENTRYPOINT ["/usr/bin/dumb-init", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
-# No CMD here because the entrypoint will start processes.
-# If you prefer CMD to be explicit, you can set:
-# CMD ["nginx", "-g", "daemon off;"]
+# No CMD here because the entrypoint will start Gunicorn/Uvicorn.
