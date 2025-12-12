@@ -86,7 +86,8 @@ jobs:
       - name: Run unit tests (pytest) with coverage & produce JUnit report
         run: |
           mkdir -p test-reports
-          # run pytest from repo root, tests under app/unit_tests
+          # Ensure app is importable by setting PYTHONPATH to repo root
+          export PYTHONPATH="$(pwd):$PYTHONPATH"
           pytest "${{ env.TESTS_DIR }}" \
             --junitxml=test-reports/junit-${{ matrix.python }}.xml \
             --cov="${{ env.APP_DIR }}" --cov-report=xml:test-reports/coverage-${{ matrix.python }}.xml --cov-report=term
