@@ -77,7 +77,7 @@ jobs:
       - name: Lint with ruff (fast)
         run: |
           # Fail on any lint error. Adjust flags as needed (e.g. --fix for auto-fix in separate workflow)
-          ruff check "${{ env.APP_DIR }}"g
+          ruff check "${{ env.APP_DIR }}"
 
       - name: Style check (black in check mode)
         run: |
