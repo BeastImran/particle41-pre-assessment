@@ -40,5 +40,5 @@ async def index(request: Request):
             "ip": client_ip
         })
     except Exception as e:
-        logger.exception("Unhandled error in index endpoint")
+        logger.exception("Unhandled error in index endpoint, {}".format(e))
         raise HTTPException(status_code=500, detail="Internal server error")
