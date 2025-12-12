@@ -1,120 +1,176 @@
-# GitHub Actions workflow for Python project in app/
-# - Triggers on changes to app/ directory
-# - Linting with black and pypy
-# - Unit tests
-# - SonarQube analysis
-# - Docker build and push to GitHub Container Registry
+name: CI / CD - Lint · Test · Scan · Build & Publish
 
-name: CI/CD Pipeline
-
+# Runs on PRs (to validate changes) and on pushes to main and tags (to allow publish)
 on:
-  push:
-    paths:
-      - 'app/**'
   pull_request:
+    branches:
+      - '**'
     paths:
       - 'app/**'
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'app/**'
+
+# Prevent duplicate runs for the same ref
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimal permissions: only what this workflow needs.
+permissions:
+  contents: read          # checkout, read code
+  packages: write         # push to GitHub Container Registry (ghcr)
+  issues: write           # optional if you want to open issues from workflow
+  id-token: write         # safe to keep for OIDC (optional)
+  pull-requests: write    # optional (if workflow adds PR comments)
+  # Avoid overly broad permissions like 'admin' or 'write' for everything.
+
+env:
+  APP_DIR: ./app
+  TESTS_DIR: ./app/unit_tests
+  DOCKER_IMAGE_NAME: ${{ github.repository_owner }}/${{ github.event.repository.name || github.repository }}
+  # NOTE: above DOCKER_IMAGE_NAME is used to form ghcr repo name; adjust if you want org/repo style
 
 jobs:
-  lint:
-    name: Lint with Black and PyPy
+
+  lint_test_scan:
+    name: Lint · Test · Secret-scan
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.14]
+        python: ['3.11', '3.12', '3.13', '3.14']   # matrix: test multiple supported python versions
+    # We need full git history for secret scanners that look through commits
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v6.0.1
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install black
-      - name: Run Black
-        run: black --check app/
+          fetch-depth: 0
 
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v6.1.0
         with:
-          python-version: 3.10
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r app/requirements.txt
-      - name: Run Unit Tests
-        run: |
-          python -m unittest discover app/
+          python-version: ${{ matrix.python }}
+          cache: 'pip'
 
-  sonarqube:
-    name: SonarQube Analysis (Local)
-    runs-on: ubuntu-latest
-    needs: test
-    services:
-      sonarqube:
-        image: sonarqube:lts-community
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd="curl --fail http://localhost:9000/api/system/health | grep -q '"status":"UP"'" \
-          --health-interval=10s --health-timeout=5s --health-retries=10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Wait for SonarQube to be healthy
-        run: |
-          for i in {1..30}; do
-            status=$(curl -s http://localhost:9000/api/system/health | grep -o '"status":"[A-Z]*"')
-            if [[ "$status" == '"status":"UP"' ]]; then
-              echo "SonarQube is UP!"
-              break
-            fi
-            echo "Waiting for SonarQube... ($i)"
-            sleep 10
-          done
-      - name: Generate SonarQube Token
-        run: |
-          curl -u admin:admin -X POST "http://localhost:9000/api/user_tokens/generate?name=gha-token" > token.json
-          export SONAR_TOKEN=$(cat token.json | grep -o '"token":"[^"]*"' | cut -d':' -f2 | tr -d '"')
-          echo "SONAR_TOKEN=$SONAR_TOKEN" >> $GITHUB_ENV
-      - name: Install SonarScanner
-        run: |
-          wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-          unzip sonar-scanner-cli-5.0.1.3006-linux.zip
-          mv sonar-scanner-5.0.1.3006-linux sonar-scanner
-      - name: Run SonarQube Scan
-        env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-        run: |
-          ./sonar-scanner/bin/sonar-scanner \
-            -Dsonar.projectKey=app \
-            -Dsonar.sources=app \
-            -Dsonar.host.url=http://localhost:9000 \
-            -Dsonar.login=$SONAR_TOKEN
+      - name: Cache pip (explicit fallback)
+        uses: actions/cache@v5.0.0
+        with:
+          path: ~/.cache/pip
+          key: pip-cache-${{ matrix.python }}-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            pip-cache-${{ matrix.python }}-${{ runner.os }}-
 
-  docker:
-    name: Build and Push Docker Image
+      - name: Install dependencies (dev)
+        # Expect repository to include requirements.txt and optionally requirements-dev.txt
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f "${{ env.APP_DIR }}/requirements.txt" ]; then
+            pip install -r "${{ env.APP_DIR }}/requirements.txt"
+          fi
+          # dev/test tooling (ensure these are pinned in your dev requirements ideally)
+          pip install ruff black pytest pytest-cov junit-xml
+
+      - name: Lint with ruff (fast)
+        run: |
+          # Fail on any lint error. Adjust flags as needed (e.g. --fix for auto-fix in separate workflow)
+          ruff check "${{ env.APP_DIR }}" --exit-zero=false
+
+      - name: Style check (black in check mode)
+        run: |
+          black --check "${{ env.APP_DIR }}"
+
+      - name: Run unit tests (pytest) with coverage & produce JUnit report
+        run: |
+          mkdir -p test-reports
+          # run pytest from repo root, tests under app/unit_tests
+          pytest "${{ env.TESTS_DIR }}" \
+            --junitxml=test-reports/junit-${{ matrix.python }}.xml \
+            --cov="${{ env.APP_DIR }}" --cov-report=xml:test-reports/coverage-${{ matrix.python }}.xml --cov-report=term
+        continue-on-error: false
+
+      - name: Upload test reports (JUnit + coverage)
+        uses: actions/upload-artifact@v5.0.0
+        with:
+          name: test-reports-${{ matrix.python }}
+          path: test-reports/
+
+      - name: Secret scanning run gitleaks
+        uses: gitleaks/gitleaks-action@v2.3.9
+        with:
+          # run full repo scan (commit history, staged, etc.)
+          args: --verbose --report-format json --report-path gitleaks-report-${{ matrix.python }}.json
+        # gitleaks returns non-zero if leaks found; that's desirable in enterprise settings
+      - name: Upload gitleaks report
+        uses: actions/upload-artifact@v5.0.0
+        with:
+          name: gitleaks-report-${{ matrix.python }}
+          path: gitleaks-report-${{ matrix.python }}.json
+
+  build_and_publish:
+    name: Build & Publish Docker image (GHCR)
     runs-on: ubuntu-latest
-    needs: sonarqube
-    permissions:
-      contents: read
-      packages: write
+    needs: lint_test_scan
+    # Only run deploy job on main branch or tags. This prevents publishing on every PR.
+    if: >
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository (full)
+        uses: actions/checkout@v6.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU (for multi-arch) and buildx
+        uses: docker/setup-buildx-action@v3.11.1
+
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build Docker image
+
+      - name: Set image tags
+        id: tags
         run: |
-          docker build -t ghcr.io/${{ github.repository }}/app:latest ./app
-      - name: Push Docker image
-        run: |
-          docker push ghcr.io/${{ github.repository }}/app:latest
+          SHORT_SHA=${GITHUB_SHA::7}
+          DATE=$(date -u +%Y%m%d%H%M%S)
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF##refs/tags/}"
+            echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name || github.repository }}:${TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name || github.repository }}:sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "LATEST_TAG=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name || github.repository }}:latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push image to GHCR (buildx)
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.IMAGE_TAG }},${{ steps.tags.outputs.LATEST_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Upload build metadata/artifacts
+        uses: actions/upload-artifact@v5.0.0
+        with:
+          name: docker-metadata
+          path: |
+            /tmp  # if you create metadata files add them here
+
+      - name: Create release note (optional)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
