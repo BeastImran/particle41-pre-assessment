@@ -186,6 +186,35 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # --- AWS ECR Push Steps ---
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2.0.1
+
+      - name: Tag Docker image for ECR
+        id: tag-ecr
+        run: |
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          ECR_REPOSITORY="${{ secrets.AWS_ECR_REPO_NAME }}"
+          IMAGE_TAG="${{ steps.tags.outputs.TAG }}"
+          # Fallback to sha if not a tag
+          if [ -z "$IMAGE_TAG" ]; then
+            IMAGE_TAG="sha-${GITHUB_SHA::7}"
+          fi
+          docker tag ${{ steps.tags.outputs.IMAGE_TAG }} "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "ecr_image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Push Docker image to Private ECR
+        run: |
+          docker push "${{ steps.tag-ecr.outputs.ecr_image }}"
+
       - name: Upload build metadata/artifacts
         uses: actions/upload-artifact@v5.0.0
         with:
