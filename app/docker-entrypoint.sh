@@ -22,7 +22,7 @@ log_debug() { echo -e "${FORCE_COLOR:+$COLOR_CYAN}[$(LOG_TIME)] [DEBUG]${FORCE_C
 #############################################
 # Environment Defaults
 #############################################
-GUNICORN_BIND=${GUNICORN_BIND:-unix:/run/gunicorn/gunicorn.sock}
+GUNICORN_BIND=0.0.0.0:8080
 GUNICORN_WORKERS=${GUNICORN_WORKERS:-3}
 GUNICORN_THREADS=${GUNICORN_THREADS:-4}
 
@@ -33,9 +33,8 @@ GUNICORN_THREADS=${GUNICORN_THREADS:-4}
 log_info "Preparing runtime directories..."
 
 mkdir -p /run/gunicorn || log_warn "Could not create /run/gunicorn"
-mkdir -p /var/log/nginx /var/lib/nginx || true
 
-chown -R "$(id -u):$(id -g)" /run/gunicorn /var/log/nginx || true
+chown -R "$(id -u):$(id -g)" /run/gunicorn || true
 
 log_debug "Using socket: $GUNICORN_BIND"
 log_debug "Gunicorn workers: $GUNICORN_WORKERS, threads: $GUNICORN_THREADS"
@@ -65,18 +64,6 @@ start_gunicorn() {
 
 
 #############################################
-# Start Nginx
-#############################################
-start_nginx() {
-    log_info "Starting Nginx reverse proxy..."
-    nginx -g "daemon off;" &
-    NGINX_PID=$!
-
-    log_info "Nginx started with PID: ${NGINX_PID}"
-}
-
-
-#############################################
 # Graceful Shutdown Handler
 #############################################
 graceful_shutdown() {
@@ -87,12 +74,7 @@ graceful_shutdown() {
         kill -TERM "${GUNICORN_PID}" 2>/dev/null || true
     fi
 
-    if [[ -n "${NGINX_PID:-}" ]]; then
-        log_info "Stopping Nginx (PID ${NGINX_PID})..."
-        nginx -s quit || kill -TERM "${NGINX_PID}" 2>/dev/null || true
-    fi
-
-    log_info "Waiting for processes to exit..."
+    log_info "Waiting for Gunicorn to exit..."
     wait
 
     log_info "Shutdown complete."
@@ -106,29 +88,22 @@ graceful_shutdown() {
 trap graceful_shutdown SIGTERM SIGINT
 
 
+
 #############################################
-# Start Services
+# Start Service
 #############################################
 start_gunicorn
-start_nginx
-
 
 #############################################
 # Process Watcher (supervision)
 #############################################
-log_info "Entrypoint initialized. Watching child processes..."
+log_info "Entrypoint initialized. Watching Gunicorn process..."
 
-# If either Gunicorn or Nginx stops, shutdown gracefully
+# If Gunicorn stops, shutdown gracefully
 while true; do
     if ! kill -0 "$GUNICORN_PID" 2>/dev/null; then
         log_error "Gunicorn process exited unexpectedly!"
         graceful_shutdown
     fi
-
-    if ! kill -0 "$NGINX_PID" 2>/dev/null; then
-        log_error "Nginx process exited unexpectedly!"
-        graceful_shutdown
-    fi
-
     sleep 2
 done
