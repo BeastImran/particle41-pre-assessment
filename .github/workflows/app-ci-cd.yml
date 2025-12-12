@@ -158,34 +158,6 @@ jobs:
           echo "owner=${OWNER_LOWER}" >> $GITHUB_OUTPUT
           echo "repo=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
-      - name: Set image tags
-        id: tags
-        run: |
-          SHORT_SHA=${GITHUB_SHA::7}
-          DATE=$(date -u +%Y%m%d%H%M%S)
-          IMAGE_ROOT="ghcr.io/${{ steps.normalize.outputs.owner }}/${{ steps.normalize.outputs.repo }}"
-
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF##refs/tags/}"
-            echo "TAG=${TAG}" >> $GITHUB_OUTPUT
-            echo "IMAGE_TAG=${IMAGE_ROOT}:${TAG}" >> $GITHUB_OUTPUT
-          else
-            echo "TAG=sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "IMAGE_TAG=${IMAGE_ROOT}:sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "LATEST_TAG=${IMAGE_ROOT}:latest" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and push image to GHCR (buildx)
-        uses: docker/build-push-action@v6.18.0
-        with:
-          context: ./app
-          file: ./app/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.IMAGE_TAG }},${{ steps.tags.outputs.LATEST_TAG }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       # --- AWS ECR Push Steps ---
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5.1.1
@@ -198,22 +170,36 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2.0.1
 
-      - name: Tag Docker image for ECR
-        id: tag-ecr
+      - name: Set image tags
+        id: tags
         run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          DATE=$(date -u +%Y%m%d%H%M%S)
+          IMAGE_ROOT="ghcr.io/${{ steps.normalize.outputs.owner }}/${{ steps.normalize.outputs.repo }}"
           ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
           ECR_REPOSITORY="${{ secrets.AWS_ECR_REPO_NAME }}"
-          IMAGE_TAG="${{ steps.tags.outputs.TAG }}"
-          # Fallback to sha if not a tag
-          if [ -z "$IMAGE_TAG" ]; then
-            IMAGE_TAG="sha-${GITHUB_SHA::7}"
-          fi
-          docker tag ${{ steps.tags.outputs.IMAGE_TAG }} "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          echo "ecr_image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Push Docker image to Private ECR
-        run: |
-          docker push "${{ steps.tag-ecr.outputs.ecr_image }}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF##refs/tags/}"
+          else
+            TAG=sha-${SHORT_SHA}
+          fi
+
+          echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=${IMAGE_ROOT}:${TAG}" >> $GITHUB_OUTPUT
+          echo "LATEST_TAG=${IMAGE_ROOT}:latest" >> $GITHUB_OUTPUT
+          echo "ECR_IMAGE_TAG=$ECR_REGISTRY/$ECR_REPOSITORY:$TAG" >> $GITHUB_OUTPUT
+c
+      - name: Build and push image to GHCR and Private ECR (buildx)
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.IMAGE_TAG }},${{ steps.tags.outputs.LATEST_TAG }},${{ steps.tags.outputs.ECR_IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Upload build metadata/artifacts
         uses: actions/upload-artifact@v5.0.0
