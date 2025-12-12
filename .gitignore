@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg-info/
+.venv/
+venv/
+ENV/
+.env
+.env.*
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+tfplan*
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl
+
+# Docker
+*.tar
+*.img
+*.log
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# General
+*.swp
+*.swo
+*~
+.idea/
+*.bak
+*.tmp
