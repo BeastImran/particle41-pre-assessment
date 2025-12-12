@@ -72,7 +72,7 @@ jobs:
             pip install -r "${{ env.APP_DIR }}/requirements.txt"
           fi
           # dev/test tooling (ensure these are pinned in your dev requirements ideally)
-          pip install ruff black pytest pytest-cov junit-xml
+          pip install ruff black pytest pytest-cov junit-xml httpx
 
       - name: Lint with ruff (fast)
         run: |
