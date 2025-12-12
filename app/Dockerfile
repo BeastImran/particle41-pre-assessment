@@ -88,8 +88,12 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Ensure runtime dirs exist and are writable by appuser (run as root)
-RUN mkdir -p /run/gunicorn /var/run/nginx /var/log/nginx \
-    && chown -R appuser:appgroup /run/gunicorn /var/run/nginx /var/log/nginx /app
+# RUN mkdir -p /run/gunicorn /var/run/nginx /var/log/nginx \
+#     && chown -R appuser:appgroup /run/gunicorn /var/run/nginx /var/log/nginx /app
+
+RUN mkdir -p /run/gunicorn /var/run/nginx /var/log/nginx /run/nginx \
+    && touch /run/nginx/nginx.pid \
+    && chown -R appuser:appgroup /run/nginx /var/run/nginx /var/log/nginx /run/gunicorn /app
 
 # Switch to non-root user
 USER appuser
